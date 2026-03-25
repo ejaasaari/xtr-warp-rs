@@ -381,6 +381,7 @@ class XTRWarp:
         n_samples_kmeans: int | None = None,
         seed: int = 42,
         use_triton_kmeans: bool | None = None,
+        centroids: torch.Tensor | None = None,
         metadata: list[dict] | None = None,
         show_progress: bool = True,
     ) -> "XTRWarp":
@@ -412,6 +413,13 @@ class XTRWarp:
         use_triton_kmeans:
             Whether to use the Triton-based K-means implementation. If None, it will be
             set to True if the device is not "cpu".
+        centroids:
+            Optional precomputed centroid tensor. When provided, K-means is skipped
+            and the supplied centroids are used directly.
+        metadata:
+            Optional per-passage metadata to store alongside the index.
+        show_progress:
+            Whether to display progress during index creation.
 
         """
         self.device = device
@@ -437,15 +445,22 @@ class XTRWarp:
 
         self._prepare_index_directory(index_path=self.index)
 
-        centroids, dim = compute_kmeans(
-            embeddings_source=embeddings_path or documents_embeddings,
-            kmeans_niters=kmeans_niters,
-            device=device,
-            max_points_per_centroid=max_points_per_centroid,
-            n_samples_kmeans=n_samples_kmeans,
-            seed=seed,
-            use_triton_kmeans=use_triton_kmeans,
-        )
+        if centroids is None:
+            centroids, dim = compute_kmeans(
+                embeddings_source=embeddings_path or documents_embeddings,
+                kmeans_niters=kmeans_niters,
+                device=device,
+                max_points_per_centroid=max_points_per_centroid,
+                n_samples_kmeans=n_samples_kmeans,
+                seed=seed,
+                use_triton_kmeans=use_triton_kmeans,
+            )
+        else:
+            dim = (
+                documents_embeddings[0].shape[-1]
+                if isinstance(documents_embeddings, list)
+                else documents_embeddings.shape[-1]
+            )
 
         xtr_warp_rs.create(
             index=self.index,
